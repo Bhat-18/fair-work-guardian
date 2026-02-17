@@ -6,9 +6,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db import set_setting, save_payslip, get_payslip_history, delete_payslip, clear_payslip_history
 from session import get_user_id
 
-user_id = get_user_id()
-
 st.set_page_config(page_title="Payslip Calculator", layout="centered", page_icon="💰", initial_sidebar_state="collapsed")
+
+user_id = get_user_id()
 
 # ==========================================
 # CSS

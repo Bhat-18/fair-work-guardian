@@ -5,9 +5,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db import get_goals, add_goal as db_add_goal, update_goal_saved, get_setting, set_setting
 from session import get_user_id
 
-user_id = get_user_id()
-
 st.set_page_config(page_title="Savings Goals", layout="centered", page_icon="🎯", initial_sidebar_state="collapsed")
+
+user_id = get_user_id()
 
 # ==========================================
 # CSS

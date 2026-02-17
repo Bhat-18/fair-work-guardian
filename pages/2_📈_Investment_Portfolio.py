@@ -8,9 +8,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db import get_portfolio, add_holding as db_add_holding, delete_holding as db_delete_holding, get_setting
 from session import get_user_id
 
-user_id = get_user_id()
-
 st.set_page_config(page_title="Investment Portfolio", layout="wide", page_icon="📈", initial_sidebar_state="collapsed")
+
+user_id = get_user_id()
 
 # ==========================================
 # CSS
