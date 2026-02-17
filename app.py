@@ -1,4 +1,5 @@
 import streamlit as st
+from session import get_user_id
 
 st.set_page_config(
     page_title="Fair Work Guardian",
@@ -6,6 +7,8 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed"
 )
+
+user_id = get_user_id()
 
 # ==========================================
 # CSS - Dark Theme (matching all pages)
@@ -212,3 +215,7 @@ st.markdown("""
     <p>Retail Award 2024-25 • Real-time data via Yahoo Finance</p>
 </div>
 """, unsafe_allow_html=True)
+
+# Session info
+st.markdown("---")
+st.info(f"🔗 **Your Session ID:** `{user_id}` — Bookmark this page to save your data! Your URL contains your unique session key.", icon="💾")
