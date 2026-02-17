@@ -1,0 +1,12 @@
+google-generativeai
+streamlit
+python-dotenv
+mcp
+uvicorn
+fastmcp
+pypdf
+nest_asyncio
+pandas
+supabase
+yfinance
+plotly
