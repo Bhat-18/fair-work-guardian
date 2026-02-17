@@ -1,81 +1,80 @@
 """
 Session management module.
-Uses Cookies for robust persistence across browser sessions.
-Includes explicit retry logic to handle async cookie loading.
+Uses a hybrid approach:
+1. Query Params (Highest Priority)
+2. LocalStorage (via simple JS injection)
+Fallbacks to new ID if neither found.
+No external dependencies for storage to ensure robustness.
 """
 import streamlit as st
 import uuid
-import extra_streamlit_components as stx
-import time
+import streamlit.components.v1 as components
 
 def get_user_id():
-    """Get or create a unique user ID using Cookies with retry logic."""
+    """Get or create a unique user ID."""
     
-    # Initialize Cookie Manager
-    # key is crucial for component state
-    cookie_manager = stx.CookieManager(key="cookie_manager")
-    
-    # 1. Check Query Params (Highest Priority - allows overriding)
+    # 1. Check Query Params (Fastest)
     params = st.query_params
     uid_from_params = params.get("uid", None)
     
     if uid_from_params:
-        # If we have a param, we trust it.
-        # Try to sync it to cookie for future visits
-        # Note: .set() might not work if component isn't fully mounted, but param is enough for now.
-        if "cookie_set" not in st.session_state:
-            try:
-                cookie_manager.set("fair_work_uid", uid_from_params, expires_at=datetime.now() + timedelta(days=365))
-                st.session_state["cookie_set"] = True
-            except:
-                pass 
+        st.session_state['user_id'] = uid_from_params
+        
+        # Force sync to localStorage (Parent + Iframe)
+        # We use simple JS injection which is more reliable than complex components
+        js = f"""
+        <script>
+            const uid = "{uid_from_params}";
+            try {{ window.parent.localStorage.setItem("fair_work_uid", uid); }} catch(e) {{}}
+            try {{ localStorage.setItem("fair_work_uid", uid); }} catch(e) {{}}
+        </script>
+        """
+        components.html(js, height=0, width=0)
         return uid_from_params
-        
-    # 2. Check Cookies with Retry Logic
-    # Cookie manager often returns None or {} on the very first run.
-    # We must be careful not to generate a NEW ID just because cookies haven't loaded yet.
     
-    cookies = cookie_manager.get_all()
+    # 2. If no params, we need to check localStorage.
+    # Since we can't synchronously read from JS to Python without a component,
+    # and components are failing, we accept a trade-off:
+    # We generate a NEW ID, but we inject JS that says:
+    # "Hey, if you actually have an OLD ID in storage, reload the page with ?uid=OLD_ID"
     
-    # If cookies are None (loading), we should wait/rerun?
-    # But we can't block indefinitely.
-    # Strategy: Use a session state flag to track "Cookie Checked".
-    
-    uid_cookie = None
-    if cookies:
-        uid_cookie = cookies.get("fair_work_uid")
-    
-    if uid_cookie:
-        # Found it! Restore session.
-        if params.get("uid") != uid_cookie:
-            st.query_params["uid"] = uid_cookie
-            st.rerun() # Reload to ensure clean state
-        return uid_cookie
-        
-    # 3. If no cookie found, are we sure they loaded?
-    # If this is the *first* script run, cookies might be empty but valid.
-    # If we generate new ID now, we might overwrite an existing user!
-    # BUT, we can't wait forever.
-    
-    # Check if we've already waited/checked
-    if "cookie_checked" not in st.session_state:
-        st.session_state["cookie_checked"] = True
-        # Rerun once to give cookie manager a chance to sync
-        time.sleep(0.5) 
-        st.rerun()
-        
-    # 4. If we are here, we checked cookies and found nothing.
-    # Generate NEW ID.
     new_id = str(uuid.uuid4())[:8]
     
-    # Set Param immediately
-    st.query_params["uid"] = new_id
+    # JS Logic:
+    # Check storage. 
+    # If found -> Redirect to ?uid=FOUND
+    # If empty -> Save NEW_ID
     
-    # Set Cookie
-    from datetime import datetime, timedelta
-    try:
-        cookie_manager.set("fair_work_uid", new_id, expires_at=datetime.now() + timedelta(days=365))
-    except:
-        pass
+    js_recover = f"""
+    <script>
+        const new_id = "{new_id}";
+        const key = "fair_work_uid";
         
+        let stored = null;
+        try {{ stored = window.parent.localStorage.getItem(key); }} catch(e) {{}}
+        if (!stored) {{
+            try {{ stored = localStorage.getItem(key); }} catch(e) {{}}
+        }}
+        
+        if (stored && stored !== "null" && stored !== "{new_id}") {{
+            // Found existing ID! Redirect to use it.
+            const url = new URL(window.location.href);
+            url.searchParams.set("uid", stored);
+            window.parent.location.href = url.toString();
+        }} else {{
+            // No existing ID. Save the new one we just generated.
+            try {{ window.parent.localStorage.setItem(key, new_id); }} catch(e) {{}}
+            try {{ localStorage.setItem(key, new_id); }} catch(e) {{}}
+        }}
+    </script>
+    """
+    
+    # Inject the script
+    components.html(js_recover, height=0, width=0)
+    
+    # For this render cycle, use the new ID.
+    # If the JS finds an old ID, it will reload the page immediately.
+    st.query_params["uid"] = new_id
+    st.session_state['user_id'] = new_id
+    
     return new_id
