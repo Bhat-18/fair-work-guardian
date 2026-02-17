@@ -3,6 +3,9 @@ import plotly.graph_objects as go
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db import get_goals, add_goal as db_add_goal, update_goal_saved, get_setting, set_setting
+from session import get_user_id
+
+user_id = get_user_id()
 
 st.set_page_config(page_title="Savings Goals", layout="centered", page_icon="🎯", initial_sidebar_state="collapsed")
 
@@ -98,7 +101,7 @@ if st.button("← Back to Home"):
 # GOALS DATA (from Supabase)
 # ==========================================
 if 'goals' not in st.session_state:
-    db_goals = get_goals()
+    db_goals = get_goals(user_id)
     if db_goals is not None:
         st.session_state.goals = db_goals
     else:
@@ -123,10 +126,10 @@ st.markdown("### 💰 Your Savings Overview")
 
 # Initialize user's total goal if not set
 if 'user_total_goal' not in st.session_state:
-    st.session_state.user_total_goal = float(get_setting('total_goal', '100000'))
+    st.session_state.user_total_goal = float(get_setting('total_goal', user_id, '100000'))
 
 if 'user_total_saved' not in st.session_state:
-    st.session_state.user_total_saved = float(get_setting('total_saved', str(sum(g['saved'] for g in st.session_state.goals))))
+    st.session_state.user_total_saved = float(get_setting('total_saved', user_id, str(sum(g['saved'] for g in st.session_state.goals))))
 
 col1, col2 = st.columns(2)
 with col1:
@@ -140,7 +143,7 @@ with col1:
     )
     if user_total_goal != st.session_state.user_total_goal:
         st.session_state.user_total_goal = float(user_total_goal)
-        set_setting('total_goal', str(user_total_goal))
+        set_setting('total_goal', str(user_total_goal), user_id)
 
 with col2:
     user_total_saved = st.number_input(
@@ -153,7 +156,7 @@ with col2:
     )
     if user_total_saved != st.session_state.user_total_saved:
         st.session_state.user_total_saved = float(user_total_saved)
-        set_setting('total_saved', str(user_total_saved))
+        set_setting('total_saved', str(user_total_saved), user_id)
 
 # Calculate progress from user inputs
 progress = (st.session_state.user_total_saved / st.session_state.user_total_goal * 100) if st.session_state.user_total_goal > 0 else 0
@@ -220,7 +223,7 @@ with c2:
 if st.button("🎯 Create Goal", use_container_width=True):
     if new_name:
         new_goal = {"name": new_name, "target": new_target, "saved": 0, "icon": new_icon, "weekly": new_weekly, "color": "#a855f7"}
-        db_add_goal(new_goal)
+        db_add_goal(new_goal, user_id)
         st.session_state.goals.append(new_goal)
         st.success(f"Created: {new_name}!")
         st.rerun()

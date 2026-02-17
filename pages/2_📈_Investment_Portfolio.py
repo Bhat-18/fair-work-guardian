@@ -6,6 +6,9 @@ import yfinance as yf
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db import get_portfolio, add_holding as db_add_holding, delete_holding as db_delete_holding, get_setting
+from session import get_user_id
+
+user_id = get_user_id()
 
 st.set_page_config(page_title="Investment Portfolio", layout="wide", page_icon="📈", initial_sidebar_state="collapsed")
 
@@ -118,7 +121,7 @@ if st.button("← Back to Home"):
 # PORTFOLIO DATA (from Supabase)
 # ==========================================
 if 'portfolio' not in st.session_state:
-    db_data = get_portfolio()
+    db_data = get_portfolio(user_id)
     if db_data is not None:
         st.session_state.portfolio = db_data
     else:
@@ -139,7 +142,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Investment Suggestion
-last_pay = float(get_setting('last_pay', '1000'))
+last_pay = float(get_setting('last_pay', user_id, '1000'))
 
 col1, col2 = st.columns([2, 1])
 with col1:
@@ -271,7 +274,7 @@ if st.session_state.portfolio:
         """, unsafe_allow_html=True)
         
         if st.button(f"🗑️ Remove {h['Symbol']}", key=f"del_{i}"):
-            db_delete_holding(h['Symbol'])
+            db_delete_holding(h['Symbol'], user_id)
             st.session_state.portfolio.pop(i)
             st.rerun()
     
@@ -551,7 +554,7 @@ with st.form("add_holding_form"):
                     "avg_cost": new_cost, 
                     "region": new_region_final
                 }
-                db_add_holding(new_holding)
+                db_add_holding(new_holding, user_id)
                 st.session_state.portfolio.append(new_holding)
                 st.success(f"✅ Added {new_sym.upper()} to portfolio!")
                 st.rerun()

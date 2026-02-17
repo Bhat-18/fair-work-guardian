@@ -4,6 +4,9 @@ import re
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db import set_setting, save_payslip, get_payslip_history, delete_payslip, clear_payslip_history
+from session import get_user_id
+
+user_id = get_user_id()
 
 st.set_page_config(page_title="Payslip Calculator", layout="centered", page_icon="💰", initial_sidebar_state="collapsed")
 
@@ -421,7 +424,7 @@ if st.button("🚀 Generate Payslip", use_container_width=True):
         """, unsafe_allow_html=True)
         
         st.session_state['last_pay'] = total_pay
-        set_setting('last_pay', str(total_pay))
+        set_setting('last_pay', str(total_pay), user_id)
         
         # Save to payslip history
         shifts_data = []
@@ -433,7 +436,7 @@ if st.button("🚀 Generate Payslip", use_container_width=True):
                 'evening_hours': c['evening_hours'], 'overtime_hours': c['overtime_hours'],
                 'gross_pay': c['gross_pay'],
             })
-        save_payslip(employment_type, hourly_rate, total_paid, total_ot, total_pay, shifts_data)
+        save_payslip(employment_type, hourly_rate, total_paid, total_ot, total_pay, shifts_data, user_id)
 
 # ==========================================
 # PAYSLIP HISTORY
@@ -445,10 +448,10 @@ with col_title:
     st.markdown("### 📜 Payslip History")
 with col_clear:
     if st.button("🗑️ Clear All", use_container_width=True):
-        clear_payslip_history()
+        clear_payslip_history(user_id)
         st.rerun()
 
-history = get_payslip_history()
+history = get_payslip_history(user_id)
 
 if history:
     for entry in history:
