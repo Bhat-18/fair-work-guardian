@@ -3,7 +3,7 @@ import asyncio
 import re
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from db import set_setting, save_payslip, get_payslip_history
+from db import set_setting, save_payslip, get_payslip_history, delete_payslip, clear_payslip_history
 
 st.set_page_config(page_title="Payslip Calculator", layout="centered", page_icon="💰", initial_sidebar_state="collapsed")
 
@@ -439,7 +439,14 @@ if st.button("🚀 Generate Payslip", use_container_width=True):
 # PAYSLIP HISTORY
 # ==========================================
 st.markdown("---")
-st.markdown("### 📜 Payslip History")
+
+col_title, col_clear = st.columns([3, 1])
+with col_title:
+    st.markdown("### 📜 Payslip History")
+with col_clear:
+    if st.button("🗑️ Clear All", use_container_width=True):
+        clear_payslip_history()
+        st.rerun()
 
 history = get_payslip_history()
 
@@ -472,5 +479,11 @@ if history:
                 st.markdown("**Shift Breakdown:**")
                 for s in shifts:
                     st.markdown(f"📅 **{s['day']}**: {s['start']} → {s['end']} — {s['paid_hours']:.1f}h — **${s['gross_pay']:.2f}**")
+            
+            st.markdown("---")
+            if st.button(f"🗑️ Delete this payslip", key=f"del_payslip_{entry['id']}"):
+                delete_payslip(entry['id'])
+                st.rerun()
 else:
     st.info("No payslip history yet. Generate your first payslip above! ☝️")
+

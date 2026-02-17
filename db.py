@@ -177,3 +177,23 @@ def get_payslip_history(limit=20):
         print(f"[DB] Error loading payslip history: {e}")
         return []
 
+
+def delete_payslip(payslip_id):
+    """Delete a payslip entry by ID."""
+    try:
+        get_client().table("payslip_history").delete().eq("id", payslip_id).execute()
+        return True
+    except Exception as e:
+        print(f"[DB] Error deleting payslip: {e}")
+        return False
+
+
+def clear_payslip_history():
+    """Delete all payslip history."""
+    try:
+        get_client().table("payslip_history").delete().neq("id", 0).execute()
+        return True
+    except Exception as e:
+        print(f"[DB] Error clearing payslip history: {e}")
+        return False
+
