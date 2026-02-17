@@ -22,18 +22,23 @@ def get_user_id():
         st.session_state['user_id'] = uid_from_params
         
         # Async sync to localStorage (fire and forget)
-        # This ensures that if the user comes back later without the URL param, 
-        # localStorage will have it.
-        streamlit_js_eval(
-            js_expressions=f'localStorage.setItem("fair_work_uid", "{uid_from_params}")', 
-            key="sync_uid"
-        )
+        # Try parent window first (Cloud fix), then iframe storage
+        js_sync = f"""
+        const key = "fair_work_uid";
+        const val = "{uid_from_params}";
+        try {{ window.parent.localStorage.setItem(key, val); }} 
+        catch(e) {{ localStorage.setItem(key, val); }}
+        """
+        streamlit_js_eval(js_expressions=js_sync, key=f"sync_uid_{uid_from_params}")
         return uid_from_params
 
     # 2. If no params, try to recover from localStorage (Async)
     # This renders a hidden component. It might return None initially (loading).
+    # Try parent first, then fallback
+    js_read = 'try { window.parent.localStorage.getItem("fair_work_uid") } catch(e) { localStorage.getItem("fair_work_uid") }'
+    
     stored_id = streamlit_js_eval(
-        js_expressions='localStorage.getItem("fair_work_uid")', 
+        js_expressions=js_read, 
         key="get_local_uid"
     )
     
@@ -51,11 +56,25 @@ def get_user_id():
     st.session_state['user_id'] = new_id
     
     # SMART SAVE: Only save to localStorage if it's currently empty.
-    # This prevents overwriting existing data if we are just "loading" (Step 2 hasn't finished).
-    # But ensures new users get persisted immediately.
+    # This checks securely in the browser (synchronous check) to avoid overwrites.
+    # Try parent, then iframe.
+    js_smart_save = f"""
+    const key = "fair_work_uid";
+    const val = "{new_id}";
+    try {{
+        if (!window.parent.localStorage.getItem(key) || window.parent.localStorage.getItem(key) === "null") {{
+            window.parent.localStorage.setItem(key, val);
+        }}
+    }} catch(e) {{
+        if (!localStorage.getItem(key) || localStorage.getItem(key) === "null") {{
+            localStorage.setItem(key, val);
+        }}
+    }}
+    """
+    
     streamlit_js_eval(
-        js_expressions=f'if (!localStorage.getItem("fair_work_uid") || localStorage.getItem("fair_work_uid") == "null") localStorage.setItem("fair_work_uid", "{new_id}")',
-        key="smart_save_uid"
+        js_expressions=js_smart_save,
+        key=f"smart_save_{new_id}"
     )
     
     return new_id
