@@ -50,8 +50,12 @@ def get_user_id():
     st.query_params["uid"] = new_id
     st.session_state['user_id'] = new_id
     
-    # We do NOT save to localStorage here to avoid overwriting existing data 
-    # if we are merely "loading" (Step 2 might return later).
-    # We rely on Step 1 (Sync) to save it on the next interaction/run.
+    # SMART SAVE: Only save to localStorage if it's currently empty.
+    # This prevents overwriting existing data if we are just "loading" (Step 2 hasn't finished).
+    # But ensures new users get persisted immediately.
+    streamlit_js_eval(
+        js_expressions=f'if (!localStorage.getItem("fair_work_uid") || localStorage.getItem("fair_work_uid") == "null") localStorage.setItem("fair_work_uid", "{new_id}")',
+        key="smart_save_uid"
+    )
     
     return new_id
