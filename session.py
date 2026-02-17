@@ -1,63 +1,77 @@
 """
 Session management module.
-Uses query params + localStorage for persistence.
+Uses a two-phase approach to handle the async nature of JS communication:
 
-KEY INSIGHT: 
-- components.html() runs in a SANDBOXED iframe (about:srcdoc) 
-  which CANNOT redirect the parent window.
-- streamlit_js_eval runs in the STREAMLIT iframe context,
-  which CAN read localStorage properly.
-- So we use streamlit_js_eval for READING and 
-  components.html for WRITING (writing works fine from sandbox).
+Phase 1 (First Run): 
+  - streamlit_js_eval returns None (component mounting)
+  - We DON'T generate a new ID yet. We wait.
+  
+Phase 2 (After Rerun):
+  - streamlit_js_eval returns the actual localStorage value (or "null" if empty)
+  - NOW we can safely decide: use stored ID or generate new one.
+
+This prevents the race condition where a new ID overwrites the stored one.
 """
 import streamlit as st
 import uuid
-import streamlit.components.v1 as components
 from streamlit_js_eval import streamlit_js_eval
 
 
-def _save_uid_to_storage(uid):
-    """Save UID to localStorage using components.html (write works from sandbox)."""
-    js = f"""
-    <script>
-        try {{ localStorage.setItem("fair_work_uid", "{uid}"); }} catch(e) {{}}
-    </script>
-    """
-    components.html(js, height=0, width=0)
-
-
 def get_user_id():
-    """Get or create a unique user ID."""
+    """Get or create a unique user ID with two-phase localStorage check."""
     
-    # 1. Check Query Params (Fastest, always available on refresh)
+    # 1. If uid is already in query params, we're good. Just use it.
     params = st.query_params
     uid_from_params = params.get("uid", None)
     
     if uid_from_params:
         st.session_state['user_id'] = uid_from_params
-        # Sync to localStorage for cross-session persistence
-        _save_uid_to_storage(uid_from_params)
+        # Sync to localStorage (fire and forget)
+        streamlit_js_eval(
+            js_expressions=f'localStorage.setItem("fair_work_uid", "{uid_from_params}")',
+            key="save_uid"
+        )
         return uid_from_params
     
-    # 2. Try to recover from localStorage using streamlit_js_eval
-    # This runs in the Streamlit context (NOT sandboxed), so it can read localStorage
-    stored_id = streamlit_js_eval(
+    # 2. No uid in params. Check localStorage.
+    # On first component mount, this returns None (not ready yet).
+    # On subsequent runs (after rerun), it returns the actual value.
+    stored = streamlit_js_eval(
         js_expressions='localStorage.getItem("fair_work_uid")',
-        key="read_uid_from_storage"
+        key="load_uid"
     )
     
-    if stored_id and stored_id != "null" and str(stored_id).strip():
-        # Found existing session! Set query param and rerun
-        st.query_params["uid"] = stored_id
-        st.session_state['user_id'] = stored_id
-        st.rerun()  # Python-side redirect (no sandbox issues)
+    # Phase 1: Component not ready yet (returns None)
+    if stored is None:
+        # Don't generate ID yet! Wait for JS to be ready.
+        # Use a temporary placeholder and trigger a rerun.
+        if 'uid_check_done' not in st.session_state:
+            st.session_state['uid_check_done'] = False
+        
+        if not st.session_state['uid_check_done']:
+            st.session_state['uid_check_done'] = True
+            st.rerun()  # Rerun to give JS time to mount and return value
+        
+        # If we already reran and STILL got None, fall through to generate new ID
     
-    # 3. Fallback: Generate new ID
+    # Phase 2: JS responded
+    if stored and stored != "null" and str(stored).strip():
+        # Found existing session! Restore it.
+        st.query_params["uid"] = stored
+        st.session_state['user_id'] = stored
+        st.session_state['uid_check_done'] = True
+        st.rerun()
+    
+    # 3. No stored ID found (truly new user). Generate one.
     new_id = str(uuid.uuid4())[:8]
     st.query_params["uid"] = new_id
     st.session_state['user_id'] = new_id
+    st.session_state['uid_check_done'] = True
     
-    # Save to localStorage for next session
-    _save_uid_to_storage(new_id)
+    # Save to localStorage
+    streamlit_js_eval(
+        js_expressions=f'localStorage.setItem("fair_work_uid", "{new_id}")',
+        key="save_new_uid"
+    )
     
     return new_id
