@@ -11,3 +11,4 @@ supabase
 yfinance
 plotly
 streamlit-js-eval
+extra-streamlit-components

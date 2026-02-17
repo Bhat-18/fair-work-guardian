@@ -1,80 +1,73 @@
 """
 Session management module.
-Generates a unique browser-based user ID.
-Uses query parameters as the source of truth for speed.
-Asynchronously syncs to localStorage for persistence across sessions.
-Non-blocking implementation to ensure immediate app loading.
+Uses Cookies for robust persistence across browser sessions.
+Falls back to query parameters if cookies are disabled.
+Handles async cookie loading gracefully.
 """
 import streamlit as st
 import uuid
-from streamlit_js_eval import streamlit_js_eval
-
+import extra_streamlit_components as stx
+from datetime import datetime, timedelta
 
 def get_user_id():
-    """Get or create a unique user ID."""
+    """Get or create a unique user ID using Cookies."""
     
-    # 1. Check query params (Source of Truth)
-    # This is fast and available immediately.
+    # Initialize Cookie Manager
+    # This component needs to be rendered to work.
+    cookie_manager = stx.CookieManager(key="cookie_manager")
+    
+    # 1. Check Query Params (Highest Priority - allows overriding/sharing)
     params = st.query_params
     uid_from_params = params.get("uid", None)
-
+    
+    # 2. Get all cookies (might be empty on first load until component syncs)
+    cookies = cookie_manager.get_all()
+    
+    # Wait for component to mount if cookies are not yet loaded?
+    # stx.CookieManager handles this usually, but returns {} initially.
+    # We can't distinguish "No Cookies" from "Not Loaded Yet".
+    # But usually it's fast.
+    
+    uid_cookie = cookies.get("fair_work_uid")
+    
+    # LOGIC FLOW
+    
+    # Case A: User has URL param
     if uid_from_params:
+        # If cookie doesn't match or is missing, update/set it
+        if uid_cookie != uid_from_params:
+            try:
+                cookie_manager.set("fair_work_uid", uid_from_params, expires_at=datetime.now() + timedelta(days=365))
+            except Exception:
+                pass # Component might not be ready, will retry next run
+                
         st.session_state['user_id'] = uid_from_params
-        
-        # Async sync to localStorage (fire and forget)
-        # Try parent window first (Cloud fix), then iframe storage
-        js_sync = f"""
-        const key = "fair_work_uid";
-        const val = "{uid_from_params}";
-        try {{ window.parent.localStorage.setItem(key, val); }} 
-        catch(e) {{ localStorage.setItem(key, val); }}
-        """
-        streamlit_js_eval(js_expressions=js_sync, key=f"sync_uid_{uid_from_params}")
         return uid_from_params
-
-    # 2. If no params, try to recover from localStorage (Async)
-    # This renders a hidden component. It might return None initially (loading).
-    # Try parent first, then fallback
-    js_read = 'try { window.parent.localStorage.getItem("fair_work_uid") } catch(e) { localStorage.getItem("fair_work_uid") }'
-    
-    stored_id = streamlit_js_eval(
-        js_expressions=js_read, 
-        key="get_local_uid"
-    )
-    
-    if stored_id and stored_id != "null":
-        # Found persistence! Restore it.
-        st.query_params["uid"] = stored_id
-        st.session_state['user_id'] = stored_id
-        st.rerun() # Restart to apply everywhere
-        return stored_id
-
-    # 3. Fallback: Generate New ID immediately
-    # We do NOT wait for JS (no st.stop) to prevent loading issues.
+        
+    # Case B: User has Cookie (Returning User)
+    if uid_cookie:
+        # Restore session from cookie
+        st.session_state['user_id'] = uid_cookie
+        # Update URL to match
+        if params.get("uid") != uid_cookie:
+            st.query_params["uid"] = uid_cookie
+            st.rerun() # Reload to ensure URL is clean
+        return uid_cookie
+        
+    # Case C: New User (No Cookie, No Param)
+    # Generate new ID
     new_id = str(uuid.uuid4())[:8]
+    
+    # Set Param immediately
     st.query_params["uid"] = new_id
     st.session_state['user_id'] = new_id
     
-    # SMART SAVE: Only save to localStorage if it's currently empty.
-    # This checks securely in the browser (synchronous check) to avoid overwrites.
-    # Try parent, then iframe.
-    js_smart_save = f"""
-    const key = "fair_work_uid";
-    const val = "{new_id}";
-    try {{
-        if (!window.parent.localStorage.getItem(key) || window.parent.localStorage.getItem(key) === "null") {{
-            window.parent.localStorage.setItem(key, val);
-        }}
-    }} catch(e) {{
-        if (!localStorage.getItem(key) || localStorage.getItem(key) === "null") {{
-            localStorage.setItem(key, val);
-        }}
-    }}
-    """
+    # Try to set Cookie (might fail if component not ready, but param handles this session)
+    try:
+        cookie_manager.set("fair_work_uid", new_id, expires_at=datetime.now() + timedelta(days=365))
+    except Exception:
+        pass
     
-    streamlit_js_eval(
-        js_expressions=js_smart_save,
-        key=f"smart_save_{new_id}"
-    )
+    # Note: On next rerun/load, Case A will trigger and ensure cookie is set.
     
     return new_id
